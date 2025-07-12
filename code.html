@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Blog Summarizer | Professional Assignment</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mongodb-stitch-browser-sdk@4.1.0/dist/js/stitch.umd.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #7c3aed;
+            --secondary: #4f46e5;
+            --dark: #0f172a;
+            --darker: #020617;
+        }
+        
+        body {
+            background-color: var(--darker);
+            color: #e2e8f0;
+            font-family: 'Inter', sans-serif;
+        }
+        
+        .gradient-border {
+            position: relative;
+            border-radius: 0.75rem;
+            background: var(--dark);
+        }
+        
+        .gradient-border::before {
+            content: '';
+            position: absolute;
+            inset: -1px;
+            z-index: -1;
+            border-radius: 0.75rem;
+            padding: 2px;
+            background: linear-gradient(45deg, var(--primary), var(--secondary));
+            -webkit-mask: 
+                linear-gradient(#fff 0 0) content-box, 
+                linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor;
+            mask-composite: exclude;
+        }
+        
+        .blur-circle {
+            position: absolute;
+            width: 300px;
+            height: 300px;
+            filter: blur(80px);
+            opacity: 0.3;
+            border-radius: 50%;
+            z-index: -1;
+        }
+        
+        .primary-circle {
+            background: var(--primary);
+            top: -100px;
+            right: -100px;
+        }
+        
+        .secondary-circle {
+            background: var(--secondary);
+            bottom: -100px;
+            left: -100px;
+        }
+        
+        .content-box {
+            background: rgba(15, 23, 42, 0.6);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .animate-pulse-slow {
+            animation: pulse 6s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.5;
+            }
+        }
+        
+        #summaryOutput, #urduOutput {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: var(--primary);
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--secondary);
+        }
+        
+        .typing-animation span {
+            display: inline-block;
+            opacity: 0;
+            animation: typing 0.5s forwards;
+        }
+        
+        @keyframes typing {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .rotate-infinity {
+            animation: rotate 6s linear infinite;
+        }
+        
+        @keyframes rotate {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="min-h-screen p-4 md:p-8">
+    <div class="blur-circle primary-circle"></div>
+    <div class="blur-circle secondary-circle"></div>
+    
+    <div class="max-w-6xl mx-auto">
+        <header class="flex justify-between items-center mb-8">
+            <h1 class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-400 to-indigo-500">
+                AI Blog Summarizer
+                
+            </h1>
+            <div class="flex items-center space-x-2">
+                <span class="hidden md:inline text-slate-400">OpenAI + Supabase + MongoDB</span>
+                <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse-slow"></div>
+            </div>
+        </header>
+        
+        <main class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- Input Section -->
+            <div class="gradient-border p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-xl font-semibold text-slate-100">Blog URL Input</h2>
+                    <div class="flex space-x-2">
+                        <button id="sampleBtn" class="text-xs px-2 py-1 bg-slate-800 rounded-md hover:bg-slate-700 transition">
+                            Use Sample
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="content-box p-4 rounded-lg">
+                    <div class="flex space-x-2 mb-4">
+                        <input 
+                            type="text" 
+                            id="blogUrl" 
+                            placeholder="Enter blog URL (e.g., medium.com/article)" 
+                            class="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500 text-slate-300"
+                        >
+                        <button id="summarizeBtn" class="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 rounded-lg font-medium flex items-center space-x-2 hover:opacity-90 transition">
+                            <i class="ri-ai-generate text-lg"></i>
+                            <span>Summarize</span>
+                        </button>
+                    </div>
+                    
+                    <div class="relative h-64 overflow-hidden rounded-lg">
+                        <img 
+                            src="https://placehold.co/800x450/0f172a/4f46e5?text=AI+Blog+Summarizer" 
+                            alt="Abstract dark technology background with glowing purple and blue circuits representing artificial intelligence and data processing"
+                            class="w-full h-full object-cover"
+                        >
+                        <div class="absolute inset-0 bg-gradient-to-t from-slate-900/80 via-slate-900/20 to-transparent"></div>
+                        <div class="absolute bottom-4 left-4">
+                            <h3 class="text-xl font-bold text-white">Academic Research</h3>
+                            <p class="text-sm text-slate-300">Summarize, translate, analyze and store blog content efficiently</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mt-6 content-box p-4 rounded-lg">
+                    <h3 class="font-medium text-slate-100 mb-2">Full Blog Content</h3>
+                    <div id="blogContent" class="h-64 p-3 bg-slate-900 rounded-lg overflow-y-auto text-slate-300 text-sm"></div>
+                </div>
+            </div>
+            
+            <!-- Output Section -->
+            <div class="gradient-border">
+                <div class="p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="text-xl font-semibold text-slate-100">AI Summary Output</h2>
+                        <div class="flex items-center space-x-1">
+                            <span class="text-xs bg-slate-800 px-2 py-1 rounded-md">GPT-4</span>
+                            <button id="copySummary" class="p-1 hover:bg-slate-800 rounded-md">
+                                <i class="ri-file-copy-line text-slate-400"></i>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div id="aiThinking" class="hidden content-box p-4 rounded-lg mb-4 flex items-center justify-center h-16">
+                        <div class="flex items-center space-x-2 text-purple-400">
+                            <i class="ri-loader-4-line text-xl rotate-infinity"></i>
+                            <span>AI is processing your blog content...</span>
+                        </div>
+                    </div>
+                    
+                    <div id="summaryOutput" class="content-box p-4 rounded-lg mb-6 hidden">
+                        <h3 class="font-medium text-slate-100 mb-2">English Summary</h3>
+                        <div id="englishSummary" class="text-slate-300 text-sm"></div>
+                        
+                        <div class="mt-4 pt-3 border-t border-slate-700">
+                            <div class="flex items-center justify-between mb-2">
+                                <h3 class="font-medium text-slate-100">Urdu Translation</h3>
+                                <button id="copyUrdu" class="p-1 hover:bg-slate-800 rounded-md">
+                                    <i class="ri-file-copy-line text-slate-400"></i>
+                                </button>
+                            </div>
+                            <div id="urduOutput" class="text-slate-300 text-sm" style="direction: rtl; font-family: 'Noto Nastaliq Urdu', serif;"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="content-box p-4 rounded-lg">
+                        <h3 class="font-medium text-slate-100 mb-3">Database Status</h3>
+                        <div id="dbStatus" class="flex flex-col space-y-3">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center space-x-2">
+                                    <div class="w-3 h-3 rounded-full bg-purple-500"></div>
+                                    <span class="text-sm text-slate-300">Supabase Connection</span>
+                                </div>
+                                <span id="supabaseStatus" class="text-xs px-2 py-1 bg-slate-800 rounded-md">Waiting for data...</span>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center space-x-2">
+                                    <div class="w-3 h-3 rounded-full bg-indigo-500"></div>
+                                    <span class="text-sm text-slate-300">MongoDB Connection</span>
+                                </div>
+                                <span id="mongoStatus" class="text-xs px-2 py-1 bg-slate-800 rounded-md">Waiting for data...</span>
+                            </div>
+                            <div class="flex items-center justify-between pt-3 border-t border-slate-700">
+                                <div class="flex items-center space-x-2">
+                                    <div class="w-3 h-3 rounded-full bg-green-500 animate-pulse-slow"></div>
+                                    <span class="text-sm text-slate-300">Storage Status</span>
+                                </div>
+                                <span id="storageStatus" class="text-xs px-2 py-1 bg-slate-800 rounded-md">Ready</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+        
+        <footer class="mt-12 text-center text-slate-500 text-sm">
+            <p>AI Blog Summarizer &mdash; Professional Academic Assignment</p>
+            <p class="mt-1">Using simulated AI with static logic for demonstration purposes</p>
+            <p class="mt-1"> Created by Javeriya Khan </p>
+        </footer>
+    </div>
+    
+    <!-- Modal -->
+    <div id="successModal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 hidden">
+        <div class="gradient-border w-full max-w-md mx-4 p-1 rounded-lg">
+            <div class="bg-slate-800 p-6 rounded-lg">
+                <div class="flex justify-between items-start mb-4">
+                    <div>
+                        <h3 class="text-xl font-semibold text-slate-100">Success!</h3>
+                        <p class="text-slate-400 text-sm">Your data has been processed and stored</p>
+                    </div>
+                    <button id="closeModal" class="text-slate-400 hover:text-slate-200">
+                        <i class="ri-close-line text-xl"></i>
+                    </button>
+                </div>
+                
+                <div class="bg-slate-900 p-4 rounded-lg mb-4">
+                    <div class="flex items-center space-x-3 mb-2">
+                        <div class="w-2 h-2 rounded-full bg-purple-500"></div>
+                        <span class="text-sm font-medium text-slate-300">Supabase Summary ID</span>
+                    </div>
+                    <div class="bg-slate-950 p-2 rounded text-xs font-mono text-slate-400 overflow-x-auto" id="supabaseId"></div>
+                </div>
+                
+                <div class="bg-slate-900 p-4 rounded-lg mb-4">
+                    <div class="flex items-center space-x-3 mb-2">
+                        <div class="w-2 h-2 rounded-full bg-indigo-500"></div>
+                        <span class="text-sm font-medium text-slate-300">MongoDB Document ID</span>
+                    </div>
+                    <div class="bg-slate-950 p-2 rounded text-xs font-mono text-slate-400 overflow-x-auto" id="mongoId"></div>
+                </div>
+                
+                <div class="flex justify-end">
+                    <button id="closeModalBtn" class="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 rounded-lg font-medium hover:opacity-90 transition">
+                        Close
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Sample data for URLs and corresponding content
+        const sampleBlogs = {
+            'https://medium.com/tech-article': {
+                title: "The Future of Artificial Intelligence in Healthcare",
+                content: `Artificial intelligence is revolutionizing healthcare in unprecedented ways. From diagnostic tools to treatment planning, AI systems are proving invaluable. Recent advancements in deep learning have enabled algorithms to detect anomalies in medical images with accuracy surpassing human experts in some cases.
+
+The integration of AI in healthcare workflows is reducing physician burnout by automating routine tasks. Natural language processing helps summarize patient histories, while predictive analytics forecast health risks. However, challenges remain concerning data privacy, algorithmic bias, and clinical validation.
+
+Ethical implementation requires collaboration between technologists, clinicians, and policymakers. As regulatory frameworks evolve to address these concerns, AI promises to democratize high-quality healthcare globally. The next decade will likely see widespread adoption of AI assistants across the continuum of care.`,
+                summary: "AI is transforming healthcare through improved diagnostics, predictive analytics, and workflow automation, though ethical and regulatory challenges remain for full adoption."
+            },
+            'https://blog.example.com/blockchain': {
+                title: "Blockchain Technology Beyond Cryptocurrency",
+                content: `While blockchain technology gained fame through cryptocurrencies like Bitcoin, its applications extend far beyond digital money. The immutable, decentralized ledger system provides solutions for supply chain management, voting systems, and digital identity verification.
+
+In logistics, blockchain enables real-time tracking of goods with tamper-proof records. Smart contracts automate transactions in industries from real estate to entertainment royalties. Healthcare systems use blockchain to securely share patient data across providers.
+
+Technical hurdles like scalability and energy consumption are being addressed through layer-2 solutions and proof-of-stake mechanisms. As interoperability standards develop, blockchain may become the backbone of Web3 - the decentralized internet of the future.`,
+                summary: "Blockchain's decentralized ledger has applications across supply chains, digital identity, and smart contracts, paving the way for Web3 despite current scalability challenges."
+            }
+        };
+
+        // Urdu translations dictionary
+        const urduTranslations = {
+            "AI is transforming healthcare through improved diagnostics, predictive analytics, and workflow automation, though ethical and regulatory challenges remain for full adoption.": 
+            "AI تشخیصی ٹیکنالوجی، پیش گوئی کرنے والی تجزیہ، اور کام کا بہاؤ خودکار کرنے کے ذریعے صحت کی دیکھ بھال کو تبدیل کر رہا ہے، حالانکہ اخلاقی اور ضوابط سے متعلق چیلنجز مکمل طور پر اپنانے کے لیے باقی ہیں۔",
+            
+            "Blockchain's decentralized ledger has applications across supply chains, digital identity, and smart contracts, paving the way for Web3 despite current scalability challenges.": 
+            "بلاک چین کا غیر مرکوز لین دین کا ریکارڈ سپلائی چین، ڈیجیٹل شناخت، اور اسمارٹ معاہدوں میں استعمال ہوتا ہے، جو موجودہ پیمانے کی مشکلات کے باوجود Web3 کی راہ ہموار کر رہا ہے۔"
+        };
+
+        // Simulated database functions
+        const simulateSupabase = (data) => {
+            return new Promise((resolve) => {
+                setTimeout(() => {
+                    const id = 'summary_' + Math.random().toString(36).substr(2, 9);
+                    resolve({ id, ...data });
+                }, 800);
+            });
+        };
+
+        const simulateMongoDB = (data) => {
+            return new Promise((resolve) => {
+                setTimeout(() => {
+                    const id = new ObjectId().toString();
+                    resolve({ id, ...data });
+                }, 1200);
+            });
+        };
+
+        function ObjectId() {
+            this.str = Math.random().toString(16).substr(2, 24);
+            this.toString = function() { return this.str; };
+        }
+
+        // DOM Elements
+        const blogUrlInput = document.getElementById('blogUrl');
+        const summarizeBtn = document.getElementById('summarizeBtn');
+        const sampleBtn = document.getElementById('sampleBtn');
+        const blogContent = document.getElementById('blogContent');
+        const summaryOutput = document.getElementById('summaryOutput');
+        const englishSummary = document.getElementById('englishSummary');
+        const urduOutput = document.getElementById('urduOutput');
+        const aiThinking = document.getElementById('aiThinking');
+        const supabaseStatus = document.getElementById('supabaseStatus');
+        const mongoStatus = document.getElementById('mongoStatus');
+        const storageStatus = document.getElementById('storageStatus');
+        const copySummary = document.getElementById('copySummary');
+        const copyUrdu = document.getElementById('copyUrdu');
+        const successModal = document.getElementById('successModal');
+        const closeModal = document.getElementById('closeModal');
+        const closeModalBtn = document.getElementById('closeModalBtn');
+        const supabaseId = document.getElementById('supabaseId');
+        const mongoId = document.getElementById('mongoId');
+
+        // Event Listeners
+        summarizeBtn.addEventListener('click', processBlog);
+        sampleBtn.addEventListener('click', loadSampleBlog);
+        copySummary.addEventListener('click', () => copyToClipboard(englishSummary.textContent, 'Summary copied!'));
+        copyUrdu.addEventListener('click', () => copyToClipboard(urduOutput.textContent, 'Urdu translation copied!'));
+        closeModal.addEventListener('click', () => successModal.classList.add('hidden'));
+        closeModalBtn.addEventListener('click', () => successModal.classList.add('hidden'));
+
+        function copyToClipboard(text, message) {
+            navigator.clipboard.writeText(text).then(() => {
+                const toast = document.createElement('div');
+                toast.className = 'fixed bottom-4 left-1/2 transform -translate-x-1/2 bg-slate-800 text-slate-200 px-4 py-2 rounded-lg shadow-lg text-sm z-50';
+                toast.textContent = message;
+                document.body.appendChild(toast);
+                setTimeout(() => toast.remove(), 2000);
+            });
+        }
+
+        function loadSampleBlog() {
+            const urls = Object.keys(sampleBlogs);
+            const randomUrl = urls[Math.floor(Math.random() * urls.length)];
+            blogUrlInput.value = randomUrl;
+        }
+
+        async function processBlog() {
+            const url = blogUrlInput.value.trim();
+            if (!url) {
+                alert('Please enter a blog URL');
+                return;
+            }
+
+            // Reset UI
+            blogContent.innerHTML = '';
+            englishSummary.innerHTML = '';
+            urduOutput.innerHTML = '';
+            summaryOutput.classList.add('hidden');
+            aiThinking.classList.remove('hidden');
+            
+            // Simulate blog scraping (using our sample data)
+            const blogData = sampleBlogs[url] || {
+                title: "Generic Blog Post",
+                content: "This is a sample blog content that would normally be scraped from the provided URL. For this demonstration, we're using placeholder content. In a real application, you would implement web scraping or use an API to fetch the actual blog content.",
+                summary: "This is a generated summary of the blog content, produced by simulated AI. In reality, this would come from an actual AI model processing the scraped text."
+            };
+
+            // Display blog content
+            blogContent.innerHTML = `<h4 class="font-medium text-slate-100 mb-2">${blogData.title}</h4><p class="whitespace-pre-line">${blogData.content}</p>`;
+            
+            // Simulate AI processing
+            setTimeout(() => {
+                aiThinking.classList.add('hidden');
+                
+                // Display AI summary
+                const summary = blogData.summary || "This blog discusses important topics in technology and innovation, highlighting key trends and future directions as analyzed by our AI system.";
+                englishSummary.textContent = summary;
+                
+                // Display Urdu translation if available, otherwise show placeholder
+                const urduText = urduTranslations[summary] || "یہ بلاگ ٹیکنالوجی اور جدت طرازی میں اہم موضوعات پر بحث کرتا ہے، جس میں ہماری AI سسٹم کے تجزیے کے مطابق اہم رجحانات اور مستقبل کی سمتوں پر روشنی ڈالی گئی ہے۔";
+                urduOutput.textContent = urduText;
+                
+                summaryOutput.classList.remove('hidden');
+                
+                // Simulate database storage
+                storeData(blogData, summary, urduText);
+            }, 2000);
+        }
+
+        async function storeData(blogData, summary, urduText) {
+            storageStatus.textContent = "Processing...";
+            storageStatus.className = "text-xs px-2 py-1 bg-amber-500/10 text-amber-400 rounded-md";
+            
+            // Simulate Supabase storage (summary)
+            simulateSupabase({
+                original_url: blogUrlInput.value,
+                summary: summary,
+                translation: urduText,
+                created_at: new Date().toISOString()
+            }).then((result) => {
+                supabaseStatus.textContent = "Stored successfully";
+                supabaseStatus.className = "text-xs px-2 py-1 bg-green-500/10 text-green-400 rounded-md";
+                supabaseId.textContent = result.id;
+                
+                // Simulate MongoDB storage (full content)
+                simulateMongoDB({
+                    url: blogUrlInput.value,
+                    title: blogData.title,
+                    full_content: blogData.content,
+                    metadata: {
+                        length: blogData.content.length,
+                        words: blogData.content.split(/\s+/).length
+                    }
+                }).then((result) => {
+                    mongoStatus.textContent = "Stored successfully";
+                    mongoStatus.className = "text-xs px-2 py-1 bg-green-500/10 text-green-400 rounded-md";
+                    mongoId.textContent = result.id;
+                    
+                    storageStatus.textContent = "All data stored";
+                    storageStatus.className = "text-xs px-2 py-1 bg-green-500/10 text-green-400 rounded-md";
+                    
+                    // Show success modal
+                    successModal.classList.remove('hidden');
+                });
+            });
+        }
+    </script>
+</body>
+</html>
